@@ -10,6 +10,13 @@ import ARKit
 typealias Float2 = SIMD2<Float>
 typealias Float3 = SIMD3<Float>
 
+struct ColoredPoint {
+    var x: Float
+    var y: Float
+    var z: Float
+    var rgb: UInt32
+}
+
 extension Float {
     static let degreesToRadian = Float.pi / 180
 }

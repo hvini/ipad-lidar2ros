@@ -28,13 +28,13 @@ final class RosMessagesUtils {
     /// Get builtin_interfaces/Time message from time value.
     public static func getTimestamp(_ time: Double) -> builtin_interfaces__Time {
         let sec = Int32(time)
-        let nanosec = UInt32((time - Double(sec)) * 1000000)
+        let nanosec = UInt32((time - Double(sec)) * 1000000000)
         let time = builtin_interfaces__Time(sec: sec, nanosec: nanosec)
         return time
     }
     
     /// Get sensor_msgs/PointCloud2 message from time and points.
-    public static func pointsToPointCloud2(time: Double, points: [vector_float3]) -> sensor_msgs__PointCloud2 {
+    public static func pointsToPointCloud2(time: Double, points: [ColoredPoint]) -> sensor_msgs__PointCloud2 {
         let header = std_msgs__Header(stamp: self.getTimestamp(time), frame_id: "ipad")
         // Unordered point cloud: width * height = count * 1
         let height = UInt32(1)
@@ -44,19 +44,27 @@ final class RosMessagesUtils {
             sensor_msgs__PointField(name: "x", offset: UInt32(0), datatype: sensor_msgs__PointField.DATATYPE_FLOAT32, count: UInt32(1)),
             sensor_msgs__PointField(name: "y", offset: UInt32(4), datatype: sensor_msgs__PointField.DATATYPE_FLOAT32, count: UInt32(1)),
             sensor_msgs__PointField(name: "z", offset: UInt32(8), datatype: sensor_msgs__PointField.DATATYPE_FLOAT32, count: UInt32(1)),
+            sensor_msgs__PointField(name: "rgb", offset: UInt32(12), datatype: sensor_msgs__PointField.DATATYPE_UINT32, count: UInt32(1)),
         ]
         let is_bigendian = false
-        // 3 elements (x,y,z) * 4 bytes per element (float = 32 bits = 4 bytes)
-        let point_step = UInt32(3 * 4)
+        // 4 elements (x,y,z,rgb) * 4 bytes per element
+        let point_step = UInt32(4 * 4)
         let row_step = width * point_step
-        let data = self.flattenVectorFloat3Array(points)
+        let data = self.flattenColoredPointArray(points)
         let is_dense = false
         return sensor_msgs__PointCloud2(header: header, height: height, width: width, fields: fields, is_bigendian: is_bigendian, point_step: point_step, row_step: row_step, data: data, is_dense: is_dense)
     }
     
-    /// Flatten array of float3.
-    private static func flattenVectorFloat3Array(_ array: [vector_float3]) -> [UInt8] {
-        return array.flatMap { $0.x.bytes + $0.y.bytes + $0.z.bytes }
+    /// Flatten array of ColoredPoint and encode to Base64 string for efficient rosbridge transport.
+    private static func flattenColoredPointArray(_ array: [ColoredPoint]) -> String {
+        var data = Data(capacity: array.count * 16)
+        for pt in array {
+            withUnsafeBytes(of: pt.x) { data.append(contentsOf: $0) }
+            withUnsafeBytes(of: pt.y) { data.append(contentsOf: $0) }
+            withUnsafeBytes(of: pt.z) { data.append(contentsOf: $0) }
+            withUnsafeBytes(of: pt.rgb) { data.append(contentsOf: $0) }
+        }
+        return data.base64EncodedString()
     }
     
     /// Get sensor_msgs/Image message from time and depth map.
@@ -72,8 +80,8 @@ final class RosMessagesUtils {
         return sensor_msgs__Image(header: header, height: UInt32(height), width: UInt32(width), encoding: encoding, is_bigendian: is_bigendian, step: UInt32(step), data: data)
     }
     
-    /// Extract raw array of values from pixel buffer representing depth data.
-    private static func depthPixelBufferToArray(buffer: CVPixelBuffer, width: Int, height: Int, bytesPerRow: Int) -> [UInt8] {
+    /// Extract raw array of values from pixel buffer representing depth data and encode as Base64.
+    private static func depthPixelBufferToArray(buffer: CVPixelBuffer, width: Int, height: Int, bytesPerRow: Int) -> String {
         // Lock buffer
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         // Unlock buffer upon exiting
@@ -81,17 +89,17 @@ final class RosMessagesUtils {
             CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
         }
 
-        var imgArray: [UInt8] = []
+        var data = Data(capacity: width * height)
         if let baseAddress = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) {
             let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
             for y in (0..<height) {
                 for x in (0..<width) {
                     let ix = y * bytesPerRow + x * 4
-                    imgArray.append(buffer[ix + 2])
+                    data.append(buffer[ix + 2])
                 }
             }
         }
-        return imgArray
+        return data.base64EncodedString()
     }
     
 //    /// Get sensor_msgs/Image message from time and image.

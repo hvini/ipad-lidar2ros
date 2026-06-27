@@ -21,10 +21,8 @@ import ARKit
 final class RosControllerViewProvider {
     private let logger = Logger(subsystem: "com.christophebedard.lidar2ros", category: "RosControllerViewProvider")
     
-    // Global/connection
-    private let urlTextField = UITextField()
-    private let urlTextFieldLabel = UILabel()
-    private let masterSwitch = UISwitch()
+    // Auto-connected URL
+    private let hardcodedUrl = "192.168.15.9:9090"
     
     private struct PubEntry {
         var label: UILabel
@@ -74,22 +72,26 @@ final class RosControllerViewProvider {
             self.initViewsFromEntry(pubEntry)
         }
         
-        // WebSocket URL field, label, and global switch
-        self.initViews(uiLabel: urlTextFieldLabel, labelText: "Remote bridge", uiTextField: urlTextField, uiStatusSwitch: masterSwitch, textFieldPlaceholder: "192.168.0.xyz:abcd")
+        // --- Premium UI ---
+        let titleLabel = UILabel()
+        titleLabel.text = "Sensor Streams"
+        titleLabel.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         
-        // Stack with all the ROS config
-        // TODO add separator between IP address and pub controls
-        let labelsStackView = self.createVerticalStack(arrangedSubviews: [urlTextFieldLabel, self.transformsEntry.label, self.depthEntry.label, self.pointCloudEntry.label, self.cameraEntry.label])
-        let textFieldsStackView = self.createVerticalStack(arrangedSubviews: [urlTextField, UIView(), self.depthEntry.topicNameField!, self.pointCloudEntry.topicNameField!, self.cameraEntry.topicNameField!])
-        let statusSwitchesView = self.createVerticalStack(arrangedSubviews: [masterSwitch, self.transformsEntry.stateSwitch, self.depthEntry.stateSwitch, self.pointCloudEntry.stateSwitch, self.cameraEntry.stateSwitch])
-        let steppersView = self.createVerticalStack(arrangedSubviews: [UIView(), self.transformsEntry.rateStepper, self.depthEntry.rateStepper, self.pointCloudEntry.rateStepper, self.cameraEntry.rateStepper])
-        let stepperDisplaysView = self.createVerticalStack(arrangedSubviews: [UIView(), self.transformsEntry.rateStepperLabel, self.depthEntry.rateStepperLabel, self.pointCloudEntry.rateStepperLabel, self.cameraEntry.rateStepperLabel])
-        let rosStackView = UIStackView(arrangedSubviews: [labelsStackView, textFieldsStackView, statusSwitchesView, steppersView, stepperDisplaysView])
+        let rosStackView = UIStackView(arrangedSubviews: [
+            titleLabel,
+            self.createEntryView(pubEntry: self.transformsEntry),
+            self.createEntryView(pubEntry: self.depthEntry),
+            self.createEntryView(pubEntry: self.pointCloudEntry),
+            self.createEntryView(pubEntry: self.cameraEntry)
+        ])
         rosStackView.translatesAutoresizingMaskIntoConstraints = false
-        rosStackView.axis = .horizontal
-        rosStackView.spacing = 10
+        rosStackView.axis = .vertical
+        rosStackView.spacing = 20
         
         self.view = rosStackView
+        
+        // Auto-connect
+        _ = self.pubController.enable(url: self.hardcodedUrl)
     }
     
     private func createPubEntry(pubType: PubController.PubType, labelText: String, defaultTopicName: String? = nil) -> PubEntry {
@@ -130,21 +132,51 @@ final class RosControllerViewProvider {
         }
     }
     
-    private func createVerticalStack(arrangedSubviews: [UIView]) -> UIStackView {
-        let stackView = UIStackView(arrangedSubviews: arrangedSubviews)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.axis = .vertical
-        stackView.spacing = 10
-        stackView.alignment = UIStackView.Alignment.fill
-        stackView.distribution = UIStackView.Distribution.fillEqually
-        return stackView
+    private func createEntryView(pubEntry: PubEntry) -> UIView {
+        let cardView = UIView()
+        cardView.backgroundColor = .secondarySystemGroupedBackground
+        cardView.layer.cornerRadius = 14
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.1
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        cardView.layer.shadowRadius = 4
+        
+        pubEntry.label.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        
+        let headerStack = UIStackView(arrangedSubviews: [pubEntry.label, pubEntry.stateSwitch])
+        headerStack.axis = .horizontal
+        headerStack.distribution = .equalSpacing
+        
+        let mainStack = UIStackView(arrangedSubviews: [headerStack])
+        mainStack.axis = .vertical
+        mainStack.spacing = 12
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        if let textField = pubEntry.topicNameField {
+            textField.borderStyle = .roundedRect
+            textField.backgroundColor = .tertiarySystemGroupedBackground
+            mainStack.addArrangedSubview(textField)
+        }
+        
+        let rateStack = UIStackView(arrangedSubviews: [pubEntry.rateStepper, UIView(), pubEntry.rateStepperLabel])
+        rateStack.axis = .horizontal
+        rateStack.spacing = 10
+        mainStack.addArrangedSubview(rateStack)
+        
+        cardView.addSubview(mainStack)
+        NSLayoutConstraint.activate([
+            mainStack.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
+            mainStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16),
+            mainStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+            mainStack.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16)
+        ])
+        
+        return cardView
     }
     
     @objc
     private func textFieldValueChanged(view: UIView) {
         switch view {
-        case self.urlTextField:
-            self.updateUrl()
         case self.depthEntry.topicNameField:
             self.updatePubTopic(.depth)
         case self.pointCloudEntry.topicNameField:
@@ -159,8 +191,6 @@ final class RosControllerViewProvider {
     @objc
     private func switchStatusChanged(view: UIView) {
         switch view {
-        case self.masterSwitch:
-            self.updateMasterSwitch()
         case self.transformsEntry.stateSwitch:
             self.updateTopicState(.transforms)
         case self.depthEntry.stateSwitch:
@@ -190,26 +220,7 @@ final class RosControllerViewProvider {
         }
      }
     
-    private func updateUrl() {
-        // Enable pub controller and/or update URL
-        if self.pubController.enable(url: self.urlTextField.text) {
-            // It worked, so turn switch on
-            self.masterSwitch.setOn(true, animated: true)
-        } else {
-            // It fails, so turn off switch and disable
-            self.masterSwitch.setOn(false, animated: true)
-            self.pubController.disable()
-        }
-    }
-    
-    private func updateMasterSwitch() {
-        if self.masterSwitch.isOn {
-            self.updateUrl()
-        } else {
-            // Disable pub controller
-            self.pubController.disable()
-        }
-    }
+
     
     private func updatePubTopic(_ pubType: PubController.PubType) {
         let pubEntry = self.pubEntries[pubType]!
@@ -229,11 +240,6 @@ final class RosControllerViewProvider {
             // Enable publishing
             if self.pubController.enablePub(pubType: pubType, topicName: pubEntry.topicNameField?.text!) {
                 pubEntry.rateStepper.isEnabled = true
-                // Enable master switch if not already enabled
-                if !self.masterSwitch.isOn {
-                    self.masterSwitch.setOn(true, animated: true)
-                    self.updateMasterSwitch()
-                }
             } else {
                 // Enabling failed, so disable publishing & stepper and turn off switch
                 pubEntry.stateSwitch.setOn(false, animated: true)

@@ -44,7 +44,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     func applicationDidEnterBackground(_ application: UIApplication) {
         self.logger.debug("app did enter background")
+        
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        bgTask = application.beginBackgroundTask(withName: "DisconnectRosbridge") {
+            application.endBackgroundTask(bgTask)
+            bgTask = .invalid
+        }
+        
         self.pubManager.pubController.pause()
+        
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            if bgTask != .invalid {
+                application.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
     }
     
     func applicationWillEnterForeground(_ application: UIApplication) {

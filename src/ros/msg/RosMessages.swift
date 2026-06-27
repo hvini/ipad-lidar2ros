@@ -37,7 +37,7 @@ struct sensor_msgs__Image: RosMsg {
     var encoding: String
     var is_bigendian: UInt8
     var step: UInt32
-    var data: [UInt8]
+    var data: String
     
     static let RGB8: String = "rgb8"
     static let RGBA8: String = "rgba8"
@@ -82,7 +82,7 @@ struct sensor_msgs__PointCloud2: RosMsg {
     var is_bigendian: Bool
     var point_step: UInt32
     var row_step: UInt32
-    var data: [UInt8]
+    var data: String
     var is_dense: Bool
 }
 
